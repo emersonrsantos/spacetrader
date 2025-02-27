@@ -1,0 +1,271 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Space Trader</title>
+    <style>
+        body {
+            font-family: Arial, sans-serif;
+            margin: 0;
+            padding: 5px;
+            background-color: #f0f0f0;
+            font-size: 16px;
+            /* Increased from 13px */
+            display: flex;
+            flex-direction: column;
+            min-height: 100vh;
+            /* Fits viewport height */
+            box-sizing: border-box;
+        }
+
+        h1 {
+            font-size: 1.3em;
+            /* Increased from 1.1em */
+            text-align: center;
+            margin: 3px 0;
+        }
+
+        #status,
+        #map,
+        #market,
+        #messages {
+            margin-bottom: 5px;
+            padding: 5px;
+            background-color: #fff;
+            border-radius: 3px;
+            box-shadow: 0 1px 3px rgba(0, 0, 0, 0.1);
+        }
+
+        #status p {
+            margin: 2px 0;
+        }
+
+        #map h2,
+        #market h2 {
+            font-size: 1.1em;
+            /* Increased from 0.9em */
+            margin: 2px 0;
+        }
+
+        #map button,
+        #market button {
+            display: inline-block;
+            padding: 6px 10px;
+            /* Unchanged, still touch-friendly */
+            margin: 2px;
+            font-size: 1em;
+            /* Increased from 0.8em */
+            background-color: #007bff;
+            color: white;
+            border: none;
+            border-radius: 3px;
+            cursor: pointer;
+        }
+
+        #map button:disabled {
+            background-color: #ccc;
+        }
+
+        #market div {
+            margin: 3px 0;
+        }
+
+        #messages {
+            max-height: 100px;
+            /* Unchanged, keeps layout tight */
+            overflow-y: auto;
+            border: 1px solid #ccc;
+            padding: 3px;
+            font-size: 0.9em;
+            /* Increased from 0.8em */
+        }
+
+        #messages p {
+            margin: 2px 0;
+        }
+
+        /* Media Queries for larger screens */
+        @media (min-width: 600px) {
+            body {
+                padding: 10px;
+            }
+
+            h1 {
+                font-size: 1.8em;
+            }
+
+            #map button,
+            #market button {
+                padding: 8px 12px;
+            }
+        }
+    </style>
+</head>
+
+<body>
+    <h1>Space Trader</h1>
+    <div id="status">
+        <p><strong>Location:</strong> <span id="location"></span></p>
+        <p><strong>Money:</strong> <span id="money"></span></p>
+        <p><strong>Cargo:</strong> <span id="cargo"></span></p>
+    </div>
+    <div id="map">
+        <h2>Travel to:</h2>
+        <div id="locations"></div>
+    </div>
+    <div id="market">
+        <h2>Market at <span id="market-location"></span></h2>
+        <div id="goods"></div>
+    </div>
+    <div id="messages">
+    </div>
+
+    <script>
+        // Define game data
+        const locations = [
+            { name: 'Earth', prices: { Food: 10, Tech: 50, Luxury: 100 } },
+            { name: 'Mars', prices: { Food: 20, Tech: 30, Luxury: 80 } },
+            { name: 'Jupiter', prices: { Food: 5, Tech: 70, Luxury: 150 } },
+            { name: 'Saturn', prices: { Food: 15, Tech: 40, Luxury: 90 } },
+        ];
+        const goods = ['Food', 'Tech', 'Luxury'];
+
+        // Player state
+        let player = {
+            location: 'Earth',
+            money: 100,
+            cargo: { Food: 0, Tech: 0, Luxury: 0 },
+            cargoCapacity: 10
+        };
+
+        // Calculate current cargo size
+        function getCurrentCargo() {
+            return goods.reduce((sum, good) => sum + (player.cargo[good] || 0), 0);
+        }
+
+        // Update player status display
+        function updateStatus() {
+            document.getElementById('location').textContent = player.location;
+            document.getElementById('money').textContent = player.money;
+            let cargoText = '';
+            for (let good of goods) {
+                if (player.cargo[good] > 0) {
+                    cargoText += `${good}: ${player.cargo[good]}, `;
+                }
+            }
+            document.getElementById('cargo').textContent = cargoText.slice(0, -2) || 'Empty';
+        }
+
+        // Update travel map
+        function updateMap() {
+            const locationsDiv = document.getElementById('locations');
+            locationsDiv.innerHTML = '';
+            for (let loc of locations) {
+                const button = document.createElement('button');
+                button.textContent = loc.name;
+                button.onclick = () => travelTo(loc.name);
+                if (loc.name === player.location) {
+                    button.disabled = true;
+                }
+                locationsDiv.appendChild(button);
+            }
+        }
+
+        // Update market interface
+        function updateMarket() {
+            document.getElementById('market-location').textContent = player.location;
+            const goodsDiv = document.getElementById('goods');
+            goodsDiv.innerHTML = '';
+            const location = locations.find(loc => loc.name === player.location);
+            for (let good of goods) {
+                const price = location.prices[good];
+                const div = document.createElement('div');
+                div.innerHTML = `${good}: ${price} <button onclick="buyGood('${good}')">Buy</button> <button onclick="sellGood('${good}')">Sell</button>`;
+                goodsDiv.appendChild(div);
+            }
+        }
+
+        // Scrollable addMessage (unchanged from previous)
+        function addMessage(message) {
+            const messagesDiv = document.getElementById('messages');
+            const p = document.createElement('p');
+            p.textContent = message;
+            messagesDiv.appendChild(p);
+            if (messagesDiv.children.length > 10) {
+                messagesDiv.removeChild(messagesDiv.firstChild);
+            }
+            messagesDiv.scrollTop = messagesDiv.scrollHeight; // Auto-scroll to bottom
+        }
+
+        // Refresh entire UI
+        function updateUI() {
+            updateStatus();
+            updateMap();
+            updateMarket();
+        }
+
+        // Buy a good
+        function buyGood(good) {
+            const location = locations.find(loc => loc.name === player.location);
+            const price = location.prices[good];
+            if (player.money >= price && getCurrentCargo() < player.cargoCapacity) {
+                player.money -= price;
+                player.cargo[good] = (player.cargo[good] || 0) + 1;
+                addMessage(`You bought 1 ${good} for ${price} money.`);
+                updateUI();
+            } else {
+                addMessage(`Cannot buy ${good}: not enough money or cargo space.`);
+            }
+        }
+
+        // Sell a good
+        function sellGood(good) {
+            if (player.cargo[good] > 0) {
+                const location = locations.find(loc => loc.name === player.location);
+                const price = location.prices[good];
+                player.money += price;
+                player.cargo[good]--;
+                addMessage(`You sold 1 ${good} for ${price} money.`);
+                updateUI();
+            } else {
+                addMessage(`You don't have any ${good} to sell.`);
+            }
+        }
+
+        // Travel to a location
+        function travelTo(destination) {
+            if (destination === player.location) {
+                addMessage('You are already here.');
+                return;
+            }
+            addMessage(`Traveling to ${destination}...`);
+            setTimeout(() => {
+                player.location = destination;
+                if (Math.random() < 0.2) { // 20% pirate encounter chance
+                    addMessage('You encountered pirates!');
+                    if (getCurrentCargo() > 0) {
+                        const cargoGoods = goods.filter(good => player.cargo[good] > 0);
+                        const randomGood = cargoGoods[Math.floor(Math.random() * cargoGoods.length)];
+                        player.cargo[randomGood]--;
+                        addMessage(`Pirates stole 1 ${randomGood} from your cargo.`);
+                    } else {
+                        const loss = Math.min(20, player.money);
+                        player.money -= loss;
+                        addMessage(`Pirates took ${loss} money from you.`);
+                    }
+                } else {
+                    addMessage(`You safely arrived at ${destination}.`);
+                }
+                updateUI();
+            }, 1000); // 1-second travel delay
+        }
+
+        // Initialize the game
+        addMessage('Welcome to Space Trader! Buy low, sell high, avoid pirates.');
+        updateUI();
+    </script>
+</body>
+
+</html>
